@@ -35,8 +35,8 @@ app.get("/api/health", (req, res) => {
     });
 });
 
-
-
 app.use("/api/videos", videoRoutes);
+
+
 
 export default app;

@@ -1,8 +1,20 @@
 import {
     isValidYouTubeUrl,
     checkYtDlp,
-    getVideoInfo
+    getVideoInfo,
+    getTranscript
 } from "../utils/youtube.js";
+
+import {
+    checkFFmpeg,
+    downloadVideo,
+    getVideoMetadata,
+    cleanupVideo
+} from "../services/videoService.js";
+
+import {
+    extractDistinctSnapshots
+} from "../services/snapshotService.js";
 
 /*
 |--------------------------------------------------------------------------
@@ -69,5 +81,273 @@ export const validateVideo = async (req, res) => {
             success: false,
             message: error.message || "Failed to validate YouTube video."
         });
+    }
+};
+
+/*
+|--------------------------------------------------------------------------
+| POST /api/videos/transcript
+|--------------------------------------------------------------------------
+*/
+
+export const extractTranscript = async (req, res) => {
+    try {
+        const { videoUrl } = req.body;
+
+        if (!videoUrl) {
+            return res.status(400).json({
+                success: false,
+                message: "videoUrl is required."
+            });
+        }
+
+        if (!isValidYouTubeUrl(videoUrl)) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide a valid YouTube URL."
+            });
+        }
+
+        const toolStatus = await checkYtDlp();
+
+        if (!toolStatus.installed) {
+            return res.status(500).json({
+                success: false,
+                message: toolStatus.error
+            });
+        }
+
+        const transcriptData =
+            await getTranscript(videoUrl);
+
+        return res.status(200).json({
+            success: true,
+            message: "Transcript extracted successfully.",
+            transcript: transcriptData
+        });
+
+    } catch (error) {
+        console.error(
+            "Transcript extraction error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                error.message ||
+                "Failed to extract transcript."
+        });
+    }
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| POST /api/videos/download-test
+|--------------------------------------------------------------------------
+*/
+
+export const downloadTest = async (req, res) => {
+
+    let downloadedVideo = null;
+
+    try {
+
+        const { videoUrl } = req.body;
+
+        if (!videoUrl) {
+            return res.status(400).json({
+                success: false,
+                message: "videoUrl is required."
+            });
+        }
+
+        if (!isValidYouTubeUrl(videoUrl)) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide a valid YouTube URL."
+            });
+        }
+
+        const ffmpeg =
+            await checkFFmpeg();
+
+        if (!ffmpeg.installed) {
+            return res.status(500).json({
+                success: false,
+                message: ffmpeg.error
+            });
+        }
+
+        const ytDlp =
+            await checkYtDlp();
+
+        if (!ytDlp.installed) {
+            return res.status(500).json({
+                success: false,
+                message: ytDlp.error
+            });
+        }
+
+        /*
+        Download video.
+        */
+
+        downloadedVideo =
+            await downloadVideo(
+                videoUrl
+            );
+
+        /*
+        Verify FFmpeg can read it.
+        */
+
+        const metadata =
+            await getVideoMetadata(
+                downloadedVideo.path
+            );
+
+        return res.status(200).json({
+            success: true,
+            message:
+                "Video downloaded and verified successfully.",
+
+            video: {
+                sizeBytes:
+                    downloadedVideo.size,
+
+                sizeMB:
+                    Number(
+                        (
+                            downloadedVideo.size /
+                            (1024 * 1024)
+                        ).toFixed(2)
+                    ),
+
+                metadata
+            }
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Video download test failed:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                error.message ||
+                "Video processing failed."
+        });
+
+    } finally {
+
+        /*
+        Important:
+        Remove downloaded video after
+        verification.
+
+        Later the snapshot pipeline will
+        keep the temporary video only for
+        the duration of processing.
+        */
+
+        if (downloadedVideo?.directory) {
+            await cleanupVideo(
+                downloadedVideo.directory
+            );
+        }
+    }
+};
+
+/*
+|--------------------------------------------------------------------------
+| POST /api/videos/snapshot-test
+|--------------------------------------------------------------------------
+*/
+
+export const snapshotTest = async (req, res) => {
+
+    let video = null;
+    let snapshots = null;
+
+    try {
+
+        const { videoUrl } = req.body;
+
+        if (!videoUrl) {
+            return res.status(400).json({
+                success: false,
+                message: "videoUrl is required."
+            });
+        }
+
+        /*
+        Download temporary video.
+        */
+
+        video =
+            await downloadVideo(
+                videoUrl
+            );
+
+        /*
+        Extract visually distinct frames.
+        */
+
+        snapshots =
+            await extractDistinctSnapshots(
+                video.path
+            );
+
+        return res.status(200).json({
+            success: true,
+
+            message:
+                "Distinct snapshots extracted successfully.",
+
+            count:
+                snapshots.snapshots.length,
+
+            snapshots:
+                snapshots.snapshots.map(
+                    (snapshot) => ({
+                        index:
+                            snapshot.index,
+
+                        path:
+                            snapshot.path
+                    })
+                )
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Snapshot extraction failed:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                error.message ||
+                "Snapshot extraction failed."
+        });
+
+    } finally {
+
+        /*
+        Clean downloaded video.
+        */
+
+        if (video?.directory) {
+            await cleanupVideo(
+                video.directory
+            );
+        }
     }
 };
