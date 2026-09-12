@@ -25,11 +25,6 @@ import {
     extractDistinctSnapshots
 } from "../services/snapshotService.js";
 
-/*
-|--------------------------------------------------------------------------
-| GET /api/videos/tool-status
-|--------------------------------------------------------------------------
-*/
 
 export const getToolStatus = async (req, res) => {
     const ytDlp = await checkYtDlp();
@@ -42,11 +37,7 @@ export const getToolStatus = async (req, res) => {
     });
 };
 
-/*
-|--------------------------------------------------------------------------
-| POST /api/videos/validate
-|--------------------------------------------------------------------------
-*/
+
 
 export const validateVideo = async (req, res) => {
     try {
@@ -93,11 +84,7 @@ export const validateVideo = async (req, res) => {
     }
 };
 
-/*
-|--------------------------------------------------------------------------
-| POST /api/videos/transcript
-|--------------------------------------------------------------------------
-*/
+
 
 export const extractTranscript = async (req, res) => {
     try {
