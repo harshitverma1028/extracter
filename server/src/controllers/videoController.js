@@ -5,6 +5,15 @@ import {
     getTranscript
 } from "../utils/youtube.js";
 
+import path from "path";
+import os from "os";
+import fs from "fs/promises";
+import crypto from "crypto";
+
+import {
+    generateSnapshotPDF
+} from "../services/pdfService.js";
+
 import {
     checkFFmpeg,
     downloadVideo,
@@ -351,3 +360,158 @@ export const snapshotTest = async (req, res) => {
         }
     }
 };
+
+
+/*
+|--------------------------------------------------------------------------
+| POST /api/videos/snapshot-pdf-test
+|--------------------------------------------------------------------------
+*/
+
+export const snapshotPdfTest =
+    async (req, res) => {
+
+        let video = null;
+        let snapshots = null;
+
+        const jobDirectory =
+            path.join(
+                os.tmpdir(),
+                `pdf-test-${crypto.randomUUID()}`
+            );
+
+        try {
+
+            const {
+                videoUrl
+            } = req.body;
+
+            const {
+                getVideoInfo
+            } = await import(
+                "../utils/youtube.js"
+            );
+
+            if (!videoUrl) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "videoUrl is required."
+                });
+            }
+
+            /*
+            Get metadata
+            */
+
+            const videoInfo =
+                await getVideoInfo(
+                    videoUrl
+                );
+
+            /*
+            Download video
+            */
+
+            video =
+                await downloadVideo(
+                    videoUrl
+                );
+
+            /*
+            Extract snapshots
+            */
+
+            snapshots =
+                await extractDistinctSnapshots(
+                    video.path
+                );
+
+            /*
+            Create PDF directory
+            */
+
+            await fs.mkdir(
+                jobDirectory,
+                {
+                    recursive: true
+                }
+            );
+
+            const pdfPath =
+                path.join(
+                    jobDirectory,
+                    "video-snapshots.pdf"
+                );
+
+            /*
+            Generate PDF
+            */
+
+            await generateSnapshotPDF({
+                videoTitle:
+                    videoInfo.title,
+
+                videoUrl,
+
+                snapshots:
+                    snapshots.snapshots,
+
+                outputPath:
+                    pdfPath
+            });
+
+            /*
+            Send PDF
+            */
+
+            res.download(
+                pdfPath,
+                "video-snapshots.pdf",
+                async () => {
+
+                    await fs.rm(
+                        jobDirectory,
+                        {
+                            recursive: true,
+                            force: true
+                        }
+                    );
+                }
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Snapshot PDF failed:",
+                error
+            );
+
+            await fs.rm(
+                jobDirectory,
+                {
+                    recursive: true,
+                    force: true
+                }
+            );
+
+            return res.status(500).json({
+                success: false,
+                message:
+                    error.message ||
+                    "Failed to generate snapshot PDF."
+            });
+
+        } finally {
+
+            /*
+            Delete downloaded video.
+            */
+
+            if (video?.directory) {
+                await cleanupVideo(
+                    video.directory
+                );
+            }
+        }
+    };

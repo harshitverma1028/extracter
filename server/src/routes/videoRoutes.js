@@ -4,7 +4,8 @@ import {
     validateVideo,
     extractTranscript,
     downloadTest,
-    snapshotTest
+    snapshotTest,
+    snapshotPdfTest
 } from "../controllers/videoController.js";
 
 const router = express.Router();
@@ -19,5 +20,7 @@ router.post("/transcript", extractTranscript
 router.post("/download-test", downloadTest);
 
 router.post("/snapshot-test", snapshotTest);
+
+router.post("/snapshot-pdf-test", snapshotPdfTest);
 
 export default router;
