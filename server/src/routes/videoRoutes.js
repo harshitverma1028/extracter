@@ -5,7 +5,10 @@ import {
     extractTranscript,
     downloadTest,
     snapshotTest,
-    snapshotPdfTest
+    snapshotPdfTest,
+    getAIStatus,
+    summaryTest,
+    questionsTest
 } from "../controllers/videoController.js";
 
 const router = express.Router();
@@ -22,5 +25,11 @@ router.post("/download-test", downloadTest);
 router.post("/snapshot-test", snapshotTest);
 
 router.post("/snapshot-pdf-test", snapshotPdfTest);
+
+router.get("/ai-status", getAIStatus);
+
+router.post("/summary-test", summaryTest);
+
+router.post("/questions-test", questionsTest);
 
 export default router;

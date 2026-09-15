@@ -25,6 +25,20 @@ import {
     extractDistinctSnapshots
 } from "../services/snapshotService.js";
 
+import {
+    checkAI
+} from "../services/aiService.js";
+
+import {
+    generateVideoSummary
+} from "../services/summaryService.js";
+
+import {
+    generateVideoQuestions
+} from "../services/questionService.js";
+
+import { generateLearningPackagePDF } from "../services/pdfService.js";
+
 
 export const getToolStatus = async (req, res) => {
     const ytDlp = await checkYtDlp();
@@ -502,3 +516,226 @@ export const snapshotPdfTest =
             }
         }
     };
+
+
+    /*
+|--------------------------------------------------------------------------
+| GET /api/videos/ai-status
+|--------------------------------------------------------------------------
+*/
+
+export const getAIStatus = async (
+    req,
+    res
+) => {
+
+    const status =
+        await checkAI();
+
+    return res.status(200).json({
+        success: true,
+        ai: status
+    });
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| POST /api/videos/summary-test
+|--------------------------------------------------------------------------
+*/
+
+export const summaryTest =
+    async (req, res) => {
+
+        try {
+
+            const {
+                transcript
+            } = req.body;
+
+            if (
+                !transcript ||
+                transcript.trim().length < 20
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "A valid transcript is required."
+                });
+            }
+
+            const ai =
+                await checkAI();
+
+            if (
+                !ai.available
+            ) {
+                return res.status(503).json({
+                    success: false,
+                    message:
+                        ai.error ||
+                        "AI service unavailable.",
+                    ai
+                });
+            }
+
+            if (
+                !ai.modelInstalled
+            ) {
+                return res.status(503).json({
+                    success: false,
+                    message:
+                        `Model ${ai.model} is not installed.`,
+                    ai
+                });
+            }
+
+            const result =
+                await generateVideoSummary(
+                    transcript
+                );
+
+            return res.status(200).json({
+                success: true,
+                result
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Summary test failed:",
+                error
+            );
+
+            return res.status(500).json({
+                success: false,
+                message:
+                    error.message ||
+                    "Summary generation failed."
+            });
+        }
+    };
+
+
+    export const questionsTest = async (req, res) => {
+    try {
+        const { transcript } = req.body;
+
+        if (!transcript) {
+            return res.status(400).json({
+                success: false,
+                message: "Transcript is required."
+            });
+        }
+
+        const aiStatus = await checkAI();
+
+        if (!aiStatus.available) {
+            return res.status(503).json({
+                success: false,
+                message: "AI provider is not available.",
+                ai: aiStatus
+            });
+        }
+
+        if (!aiStatus.modelInstalled) {
+            return res.status(503).json({
+                success: false,
+                message: "Configured AI model is not installed.",
+                ai: aiStatus
+            });
+        }
+
+        const result =
+            await generateVideoQuestions(
+                transcript
+            );
+
+        return res.status(200).json({
+            success: true,
+            ...result
+        });
+
+    } catch (error) {
+        console.error(
+            "Question generation failed:"
+        );
+        console.error(error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+//      pdf download
+
+export const learningPackageTest = async (req, res) => {
+    try {
+        const {
+            videoTitle,
+            videoUrl,
+            summary,
+            importantPoints,
+            snapshots = [],
+            questions = []
+        } = req.body;
+
+        if (!videoTitle || !summary) {
+            return res.status(400).json({
+                success: false,
+                message: "videoTitle and summary are required."
+            });
+        }
+
+        const tempDir = await fs.mkdtemp(
+            path.join(os.tmpdir(), "learning-package-")
+        );
+
+        const outputPath = path.join(
+            tempDir,
+            "learning-package.pdf"
+        );
+
+        const result = await generateLearningPackagePDF({
+            videoTitle,
+            videoUrl,
+            summary,
+            importantPoints,
+            snapshots,
+            questions,
+            outputPath
+        });
+
+        return res.download(
+            result.path,
+            result.filename,
+            async () => {
+                try {
+                    await fs.rm(tempDir, {
+                        recursive: true,
+                        force: true
+                    });
+                } catch (cleanupError) {
+                    console.error(
+                        "PDF cleanup failed:",
+                        cleanupError.message
+                    );
+                }
+            }
+        );
+
+    } catch (error) {
+        console.error(
+            "Learning package PDF failed:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
