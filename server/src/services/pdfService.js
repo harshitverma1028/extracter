@@ -317,6 +317,367 @@ export const generateSnapshotPDF = ({
 
 
 
+export const PDF = async ({
+    videoTitle,
+    videoUrl,
+    summary,
+    importantPoints,
+    snapshots,
+    questions,
+    outputPath
+}) => {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({
+            size: "A4",
+            margins: {
+                top: 50,
+                bottom: 50,
+                left: 50,
+                right: 50
+            },
+            info: {
+                Title: `${videoTitle} - Learning Package`,
+                Author: "AI Video Learning Generator",
+                Subject: "AI Generated Learning Package"
+            }
+        });
+
+        const stream = fs.createWriteStream(outputPath);
+
+        doc.pipe(stream);
+
+        /*
+         * ------------------------------------------------
+         * COVER PAGE
+         * ------------------------------------------------
+         */
+
+        doc.fontSize(28)
+            .font("Helvetica-Bold")
+            .text(
+                "AI VIDEO LEARNING",
+                {
+                    align: "center"
+                }
+            );
+
+        doc.moveDown(1);
+
+        doc.fontSize(22)
+            .text(
+                videoTitle || "Learning Package",
+                {
+                    align: "center"
+                }
+            );
+
+        doc.moveDown(2);
+
+        doc.fontSize(12)
+            .font("Helvetica")
+            .text(
+                `Generated Learning Package`,
+                {
+                    align: "center"
+                }
+            );
+
+        doc.moveDown();
+
+        doc.text(
+            `Snapshots: ${snapshots?.length || 0}`,
+            {
+                align: "center"
+            }
+        );
+
+        doc.text(
+            `Questions: ${questions?.length || 0}`,
+            {
+                align: "center"
+            }
+        );
+
+        doc.moveDown(2);
+
+        if (videoUrl) {
+            doc.fontSize(9)
+                .fillColor("gray")
+                .text(
+                    videoUrl,
+                    {
+                        align: "center"
+                    }
+                )
+                .fillColor("black");
+        }
+
+        /*
+         * ------------------------------------------------
+         * SUMMARY
+         * ------------------------------------------------
+         */
+
+        doc.addPage();
+
+        doc.fontSize(22)
+            .font("Helvetica-Bold")
+            .text("1. VIDEO SUMMARY");
+
+        doc.moveDown();
+
+        doc.fontSize(11)
+            .font("Helvetica")
+            .text(
+                summary || "No summary available.",
+                {
+                    lineGap: 5,
+                    align: "left"
+                }
+            );
+
+        /*
+         * ------------------------------------------------
+         * IMPORTANT POINTS
+         * ------------------------------------------------
+         */
+
+        doc.addPage();
+
+        doc.fontSize(22)
+            .font("Helvetica-Bold")
+            .text("2. IMPORTANT POINTS");
+
+        doc.moveDown();
+
+        doc.fontSize(11)
+            .font("Helvetica");
+
+        if (
+            importantPoints &&
+            importantPoints.length
+        ) {
+            importantPoints.forEach(
+                (point, index) => {
+                    doc.moveDown(0.5);
+
+                    doc.font("Helvetica-Bold")
+                        .text(
+                            `${index + 1}. `,
+                            {
+                                continued: true
+                            }
+                        );
+
+                    doc.font("Helvetica")
+                        .text(point);
+                }
+            );
+        } else {
+            doc.text(
+                "No important points available."
+            );
+        }
+
+        /*
+         * ------------------------------------------------
+         * SNAPSHOTS
+         * ------------------------------------------------
+         */
+
+        if (
+            snapshots &&
+            snapshots.length
+        ) {
+            doc.addPage();
+
+            doc.fontSize(22)
+                .font("Helvetica-Bold")
+                .text("3. VIDEO SNAPSHOTS");
+
+            doc.moveDown();
+
+            snapshots.forEach(
+                (snapshot, index) => {
+
+                    if (index > 0) {
+                        doc.addPage();
+
+                        doc.fontSize(16)
+                            .font("Helvetica-Bold")
+                            .text(
+                                "Video Snapshot"
+                            );
+
+                        doc.moveDown();
+                    }
+
+                    const timestamp =
+                        formatTimestamp(
+                            snapshot.timestamp
+                        );
+
+                    doc.fontSize(11)
+                        .font("Helvetica")
+                        .text(
+                            `Snapshot ${
+                                index + 1
+                            } / ${
+                                snapshots.length
+                            }`,
+                            {
+                                align: "center"
+                            }
+                        );
+
+                    doc.text(
+                        `Timestamp: ${timestamp}`,
+                        {
+                            align: "center"
+                        }
+                    );
+
+                    doc.moveDown();
+
+                    try {
+                        doc.image(
+                            snapshot.path,
+                            50,
+                            150,
+                            {
+                                fit: [
+                                    495,
+                                    500
+                                ],
+                                align: "center",
+                                valign: "center"
+                            }
+                        );
+                    } catch (error) {
+                        console.error(
+                            `Unable to add snapshot ${
+                                index + 1
+                            }:`,
+                            error.message
+                        );
+
+                        doc.fontSize(10)
+                            .text(
+                                "Snapshot could not be embedded."
+                            );
+                    }
+                }
+            );
+        }
+
+        /*
+         * ------------------------------------------------
+         * QUESTIONS
+         * ------------------------------------------------
+         */
+
+        if (
+            questions &&
+            questions.length
+        ) {
+            doc.addPage();
+
+            doc.fontSize(22)
+                .font("Helvetica-Bold")
+                .text("4. PRACTICE QUESTIONS");
+
+            doc.moveDown();
+
+            questions.forEach(
+                (question, index) => {
+
+                    doc.fontSize(13)
+                        .font("Helvetica-Bold")
+                        .text(
+                            `${index + 1}. ${
+                                question.question
+                            }`
+                        );
+
+                    doc.moveDown(0.5);
+
+                    doc.fontSize(11)
+                        .font("Helvetica");
+
+                    question.options.forEach(
+                        (option, optionIndex) => {
+
+                            const letter =
+                                String.fromCharCode(
+                                    65 + optionIndex
+                                );
+
+                            doc.text(
+                                `${letter}. ${option}`
+                            );
+                        }
+                    );
+
+                    doc.moveDown(0.5);
+
+                    doc.font("Helvetica-Bold")
+                        .text(
+                            `Answer: ${question.answer}`
+                        );
+
+                    doc.font("Helvetica")
+                        .text(
+                            `Explanation: ${
+                                question.explanation
+                            }`
+                        );
+
+                    doc.font("Helvetica-Oblique")
+                        .text(
+                            `Difficulty: ${
+                                question.difficulty
+                            }`
+                        );
+
+                    doc.moveDown(1.2);
+                }
+            );
+        }
+
+        /*
+         * ------------------------------------------------
+         * FOOTER
+         * ------------------------------------------------
+         */
+
+        doc.on(
+            "pageAdded",
+            () => {
+                // Footer is intentionally minimal.
+            }
+        );
+
+        doc.end();
+
+        stream.on(
+            "finish",
+            () => {
+                resolve({
+                    path: outputPath,
+                    filename:
+                        path.basename(outputPath)
+                });
+            }
+        );
+
+        stream.on(
+            "error",
+            reject
+        );
+    });
+};
+
+
 export const generateLearningPackagePDF = async ({
     videoTitle,
     videoUrl,

@@ -8,7 +8,9 @@ import {
     snapshotPdfTest,
     getAIStatus,
     summaryTest,
-    questionsTest
+    questionsTest,
+    learningPackageTest,
+    generateLearningPackage
 } from "../controllers/videoController.js";
 
 const router = express.Router();
@@ -31,5 +33,10 @@ router.get("/ai-status", getAIStatus);
 router.post("/summary-test", summaryTest);
 
 router.post("/questions-test", questionsTest);
+    
+router.post("/learning-package-test", learningPackageTest);
+
+router.post("/learning-package", generateLearningPackage);
+
 
 export default router;

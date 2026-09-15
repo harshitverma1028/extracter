@@ -37,8 +37,10 @@ import {
     generateVideoQuestions
 } from "../services/questionService.js";
 
-import { generateLearningPackagePDF } from "../services/pdfService.js";
 
+import {
+    generateLearningPackagePDF
+} from "../services/pdfService.js";
 
 export const getToolStatus = async (req, res) => {
     const ytDlp = await checkYtDlp();
@@ -736,6 +738,310 @@ export const learningPackageTest = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: error.message
+        });
+    }
+};
+
+
+export const generateLearningPackage = async (req, res) => {
+    let videoDirectory = null;
+    let snapshotDirectory = null;
+    let pdfPath = null;
+
+    try {
+        const { url } = req.body;
+
+        if (!url) {
+            return res.status(400).json({
+                success: false,
+                message: "YouTube URL is required."
+            });
+        }
+
+        console.log("=================================");
+        console.log("Starting Learning Package");
+        console.log("=================================");
+
+        // ---------------------------------------------
+        // 1. Validate URL
+        // ---------------------------------------------
+
+        if (!isValidYouTubeUrl(url)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid YouTube URL."
+            });
+        }
+
+        // ---------------------------------------------
+        // 2. Check AI
+        // ---------------------------------------------
+
+        const aiStatus = await checkAI();
+
+        if (!aiStatus.available) {
+            return res.status(503).json({
+                success: false,
+                message: "AI provider is not available.",
+                ai: aiStatus
+            });
+        }
+
+        if (!aiStatus.modelInstalled) {
+            return res.status(503).json({
+                success: false,
+                message: "Configured AI model is not installed.",
+                ai: aiStatus
+            });
+        }
+
+        // ---------------------------------------------
+        // 3. Get video information
+        // ---------------------------------------------
+
+        console.log("Getting video information...");
+
+        const videoInfo = await getVideoInfo(url);
+
+        console.log(
+            `Video: ${videoInfo.title}`
+        );
+
+        // ---------------------------------------------
+        // 4. Extract transcript
+        // ---------------------------------------------
+
+        console.log("Extracting transcript...");
+
+        const transcriptResult =
+            await getTranscript(url);
+
+        const transcript =
+            transcriptResult.transcript;
+
+        console.log(
+            `Transcript words: ${transcriptResult.wordCount}`
+        );
+
+        // ---------------------------------------------
+        // 5. Generate AI summary
+        // ---------------------------------------------
+
+        console.log("Generating summary...");
+
+        const summaryResult =
+            await generateVideoSummary(
+                transcript
+            );
+
+        console.log("Summary generated.");
+
+        // ---------------------------------------------
+        // 6. Generate questions
+        // ---------------------------------------------
+
+        console.log("Generating questions...");
+
+        const questionResult =
+            await generateVideoQuestions(
+                transcript
+            );
+
+        console.log(
+            `Questions generated: ${
+                questionResult.questions.length
+            }`
+        );
+
+        // ---------------------------------------------
+        // 7. Download video
+        // ---------------------------------------------
+
+        console.log("Downloading video...");
+
+        const downloaded =
+            await downloadVideo(url);
+
+        videoDirectory =
+            downloaded.directory;
+
+        console.log(
+            `Video downloaded: ${
+                downloaded.path
+            }`
+        );
+
+        // ---------------------------------------------
+        // 8. Extract snapshots
+        // ---------------------------------------------
+
+        console.log(
+            "Extracting distinct snapshots..."
+        );
+
+        const snapshotResult =
+            await extractDistinctSnapshots(
+                downloaded.path,
+                videoInfo.duration
+            );
+
+        snapshotDirectory =
+            snapshotResult.directory;
+
+        console.log(
+            `Snapshots selected: ${
+                snapshotResult.selectedCount
+            }`
+        );
+
+        // ---------------------------------------------
+        // 9. Create temporary PDF path
+        // ---------------------------------------------
+
+        const tempDir =
+            await fs.mkdtemp(
+                path.join(
+                    os.tmpdir(),
+                    "learning-package-"
+                )
+            );
+
+        pdfPath = path.join(
+            tempDir,
+            "learning-package.pdf"
+        );
+
+        // ---------------------------------------------
+        // 10. Generate complete PDF
+        // ---------------------------------------------
+
+        console.log(
+            "Generating Learning Package PDF..."
+        );
+
+        const pdf =
+            await generateLearningPackagePDF({
+                videoTitle:
+                    videoInfo.title,
+
+                videoUrl:
+                    videoInfo.webpageUrl || url,
+
+                summary:
+                    summaryResult.summary,
+
+                importantPoints:
+                    summaryResult.importantPoints,
+
+                snapshots:
+                    snapshotResult.snapshots,
+
+                questions:
+                    questionResult.questions,
+
+                outputPath:
+                    pdfPath
+            });
+
+        console.log(
+            "Learning Package generated."
+        );
+
+        // ---------------------------------------------
+        // 11. Send PDF
+        // ---------------------------------------------
+
+        return res.download(
+            pdf.path,
+            pdf.filename,
+            async () => {
+                try {
+                    if (videoDirectory) {
+                        await cleanupVideo(
+                            videoDirectory
+                        );
+                    }
+
+                    if (snapshotDirectory) {
+                        await fs.rm(
+                            snapshotDirectory,
+                            {
+                                recursive: true,
+                                force: true
+                            }
+                        );
+                    }
+
+                    if (pdfPath) {
+                        await fs.rm(
+                            path.dirname(pdfPath),
+                            {
+                                recursive: true,
+                                force: true
+                            }
+                        );
+                    }
+
+                    console.log(
+                        "Temporary files cleaned."
+                    );
+
+                } catch (cleanupError) {
+                    console.error(
+                        "Cleanup failed:",
+                        cleanupError.message
+                    );
+                }
+            }
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Learning Package generation failed:"
+        );
+
+        console.error(error);
+
+        // Cleanup if something fails
+        try {
+            if (videoDirectory) {
+                await cleanupVideo(
+                    videoDirectory
+                );
+            }
+
+            if (snapshotDirectory) {
+                await fs.rm(
+                    snapshotDirectory,
+                    {
+                        recursive: true,
+                        force: true
+                    }
+                );
+            }
+
+            if (pdfPath) {
+                await fs.rm(
+                    path.dirname(pdfPath),
+                    {
+                        recursive: true,
+                        force: true
+                    }
+                );
+            }
+        } catch (cleanupError) {
+            console.error(
+                "Failure cleanup error:",
+                cleanupError.message
+            );
+        }
+
+        return res.status(500).json({
+            success: false,
+            message:
+                error.message ||
+                "Learning Package generation failed."
         });
     }
 };
